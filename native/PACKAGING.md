@@ -17,7 +17,57 @@ release signing tools are not included in the app. Integration tools such as
 Docker, Git, Herdr and the optional Showpass checkout are installed separately.
 Sparkle and Python redistribution notices are included in Resources.
 
-## Release a new version
+## Automatic releases with GitHub Actions
+
+The `Publish Sparkle update` workflow runs when you **publish a stable GitHub
+Release**, including one previously saved as a draft. It checks out that release's
+tag, builds on an Apple Silicon runner, runs the source and packaged tests, signs
+the ZIP and feed, and attaches them to the release. The feed uploads last so it
+never advertises an archive that has not finished uploading. Prereleases and
+releases that already have `appcast.xml` are skipped.
+
+Set up the `SPARKLE_PRIVATE_KEY` repository Actions secret once with the **existing**
+key exported from the release Mac. Run the following from the repository on that
+Mac, authenticated to GitHub as a maintainer of `mkjorl/worktree-monitor`:
+
+```sh
+(
+  set -eu
+  key_dir=$(mktemp -d)
+  trap 'rm -rf "$key_dir"' EXIT
+  chmod 700 "$key_dir"
+  sparkle=$(./native/fetch-sparkle.sh)
+  "$sparkle/bin/generate_keys" --account worktree-monitor-mkjorl -x "$key_dir/private-key"
+  gh secret set SPARKLE_PRIVATE_KEY --repo mkjorl/worktree-monitor < "$key_dir/private-key"
+)
+```
+
+Do not generate a replacement key: installed apps trust the public key already
+in `native/update-config.json`. The workflow imports the secret into the temporary
+GitHub runner's Keychain, removes the exported file, and uses the existing release
+script to verify the matching public key and both signatures. The private key is
+never passed as a command-line argument or included in release assets.
+
+For each release:
+
+1. Increase `CFBundleShortVersionString` and `CFBundleVersion` in `native/build.sh`.
+   The internal build number must increase for every release.
+2. Commit and push to `main`, including this workflow before the first release.
+3. Create and publish a stable release tagged `vX.Y.Z`, matching the app version,
+   from that commit. Leave the ZIP, `appcast.xml`, and `SHA256SUMS` for the action.
+4. Wait for `Publish Sparkle update` to pass before sharing the release.
+
+The latest-release feed can return 404 while the action builds a newly published
+release; installed apps can check again after it completes. A failed build leaves
+that release without a usable feed. CI refuses to replace existing release files.
+For a failed partial upload, remove only the incomplete assets from that release
+before rerunning the job. Immutable releases cannot accept post-publication
+attachments; leave release immutability disabled for this workflow.
+
+The action uses the existing free ad-hoc signing flow. Developer ID signing and
+notarization remain available through the local flow below.
+
+## Local release alternative
 
 1. Increase `CFBundleShortVersionString` and `CFBundleVersion` in `native/build.sh`.
    The internal build number must increase for every release.
@@ -46,7 +96,9 @@ Files are written to `dist/updates/`. Neither command publishes a live release.
 
 `native/update-config.json` holds the public key and feed URL. The matching
 private Ed25519 key lives in the release Mac's login Keychain under Sparkle's
-service with account `worktree-monitor-mkjorl`. It is never committed or uploaded.
+service with account `worktree-monitor-mkjorl`. For CI, a copy is stored only in
+the `SPARKLE_PRIVATE_KEY` GitHub Actions secret. It is never committed or attached
+to a release.
 Keep an encrypted backup of this key: losing it can require distributing another
 manual installation before users can trust a replacement key. Sparkle's
 `generate_keys` utility supports export/import. Encrypt any exported backup,

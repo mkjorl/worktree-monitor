@@ -110,8 +110,10 @@ Settings → **App updates** offers **Check for Updates** and an optional automa
 check toggle. Automatic checks start off; installation requires approval. Existing
 builds without the updater require one manual upgrade first.
 
-Release maintainers: increment the version/build in `native/build.sh`, commit and
-push, then run `./native/release.sh --publish-draft`. Review and publish the draft
-on GitHub to make the update available. Every release must include its signed
-app ZIP and signed `appcast.xml`. The matching private key stays in the release
-Mac's Keychain. See [packaging and key-backup instructions](native/PACKAGING.md).
+Release maintainers: configure the `SPARKLE_PRIVATE_KEY` Actions secret once, then
+increment the version/build in `native/build.sh`, commit and push, and publish a
+stable GitHub Release tagged `vX.Y.Z` matching the app version. The
+**Publish Sparkle update** action builds, tests, signs, and attaches the ZIP,
+`SHA256SUMS`, and signed `appcast.xml`. Wait for it to pass before sharing the
+release. The local `./native/release.sh --publish-draft` flow also remains available.
+See [CI setup, packaging, and key-backup instructions](native/PACKAGING.md).

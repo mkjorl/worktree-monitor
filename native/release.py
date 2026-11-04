@@ -80,6 +80,20 @@ def validate_tag_target(output, tag, head):
     return commit is not None
 
 
+def validate_ci_release(event, info):
+    release = event["release"]
+    version = info["CFBundleShortVersionString"]
+    if event["repository"]["full_name"] != "mkjorl/worktree-monitor":
+        raise ValueError("Release repository must be mkjorl/worktree-monitor.")
+    if release["draft"] or release["prerelease"] or release.get("immutable"):
+        raise ValueError("CI requires a published, mutable, stable release.")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version) or release["tag_name"] != f"v{version}":
+        raise ValueError("Release tag must match the app version in native/build.sh (vX.Y.Z).")
+    assets = {asset["name"] for asset in release["assets"]}
+    if assets & {f"Worktree-Monitor-{version}-arm64.zip", "appcast.xml", "SHA256SUMS"}:
+        raise ValueError("Signed release assets already exist; CI will not replace published files.")
+
+
 def publish_draft(config, tag, assets, notes):
     # Read this repository's credential helper; never switch the global gh account.
     expected = f"https://github.com/{config['repository']}.git"

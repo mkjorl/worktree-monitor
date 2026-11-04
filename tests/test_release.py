@@ -38,6 +38,20 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):release.validate_tag_target(f'{other} refs/tags/{tag}\n',tag,head)
         with self.assertRaises(ValueError):release.validate_tag_target(f'{head} refs/tags/{tag}\n{other} refs/tags/{tag}^{{}}\n',tag,head)
 
+    def test_ci_requires_the_matching_stable_release_and_preserves_existing_assets(self):
+        event={'repository':{'full_name':'mkjorl/worktree-monitor'},
+               'release':{'tag_name':'v0.1.26','draft':False,'prerelease':False,'immutable':False,'assets':[]}}
+        release.validate_ci_release(event,self.info)
+        for changes in [{'tag_name':'v0.1.27'}, {'tag_name':'v0.1.26; echo unsafe'},
+                        {'draft':True}, {'prerelease':True}, {'immutable':True},
+                        *({'assets':[{'name':name}]} for name in
+                          ['Worktree-Monitor-0.1.26-arm64.zip','appcast.xml','SHA256SUMS'])]:
+            with self.subTest(changes=changes),self.assertRaises(ValueError):
+                release.validate_ci_release({**event,'release':{**event['release'],**changes}},self.info)
+        with self.assertRaises(ValueError):
+            release.validate_ci_release({**event,'repository':{'full_name':'other/fork'}},self.info)
+        release.validate_ci_release({**event,'release':{**event['release'],'assets':[{'name':'extra.txt'}]}},self.info)
+
     def test_fingerprint_detects_changed_runtime_inputs_but_ignores_build_cache(self):
         from source_fingerprint import APP_INPUTS, source_fingerprint
         with tempfile.TemporaryDirectory() as folder:

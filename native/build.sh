@@ -49,8 +49,8 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>local.showpass.worktree-monitor</string>
 <key>CFBundleName</key><string>Worktree Monitor</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.26</string>
-<key>CFBundleVersion</key><string>27</string>
+<key>CFBundleShortVersionString</key><string>0.1.27</string>
+<key>CFBundleVersion</key><string>28</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>
 <key>NSLocalNetworkUsageDescription</key><string>Allow paired phones on your Wi-Fi to view chat status and select a chat on this Mac.</string>

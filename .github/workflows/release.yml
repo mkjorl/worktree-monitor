@@ -1,0 +1,92 @@
+name: Publish Sparkle update
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sparkle-release-${{ github.event.release.id }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.repository == 'mkjorl/worktree-monitor' &&
+      !github.event.release.prerelease &&
+      !contains(github.event.release.assets.*.name, 'appcast.xml')
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Check signing secret and architecture
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ]; then
+            echo '::error::Add the existing Sparkle key as the SPARKLE_PRIVATE_KEY repository secret. See native/PACKAGING.md.'
+            exit 1
+          fi
+          test "$(uname -m)" = arm64
+
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          enable-cache: false
+
+      - name: Build the release tag
+        run: ./native/build.sh
+
+      - name: Validate release metadata
+        run: |
+          .build/venv/bin/python - <<'PY'
+          import json, os, plistlib, sys
+          from pathlib import Path
+          sys.path.insert(0, 'native')
+          from release import validate_ci_release
+          event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+          info = plistlib.loads(Path('dist/Worktree Monitor.app/Contents/Info.plist').read_bytes())
+          validate_ci_release(event, info)
+          PY
+
+      - name: Test the release
+        run: |
+          .build/venv/bin/python -B -m unittest discover -s tests
+          node tests/test_ui.js
+          node tests/test_docker_ui.js
+          node tests/test_deck_ui.js
+          node tests/test_phone_settings_ui.js
+          .build/venv/bin/python -B tests/packaged_smoke.py 'dist/Worktree Monitor.app'
+
+      - name: Import signing key and package signed update
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          .build/venv/bin/python - <<'PY'
+          import json, os, subprocess, sys, tempfile
+          from pathlib import Path
+          sparkle = Path(subprocess.check_output(['./native/fetch-sparkle.sh'], text=True).strip())
+          account = json.loads(Path('native/update-config.json').read_text())['signing_account']
+          with tempfile.TemporaryDirectory(prefix='sparkle-key-') as folder:
+              key = Path(folder) / 'private-key'
+              key.touch(mode=0o600)
+              key.write_text(os.environ.pop('SPARKLE_PRIVATE_KEY'))
+              subprocess.run([str(sparkle / 'bin/generate_keys'), '--account', account, '-f', str(key)], check=True)
+          subprocess.run([sys.executable, 'native/release.py'], check=True)
+          PY
+
+      - name: Upload archive and publish signed feed last
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" dist/updates/*.zip dist/updates/SHA256SUMS --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" dist/updates/appcast.xml --repo "$GITHUB_REPOSITORY"

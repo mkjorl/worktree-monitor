@@ -362,6 +362,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var startupTimer: Timer?
     private var webView: WKWebView?
     private var dashboardOrigin: URL?
+    private var updateController: UpdateController?
     private var isTerminating = false
     private var herdrTimer: Timer?
     private var herdrPolling = false
@@ -388,6 +389,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover)
         popover.behavior = .transient
+        updateController = UpdateController(busyChecker: { [weak self] completion in
+            guard let self else { completion(true); return }
+            self.checkUpdateActivity(completion)
+        }, changed: { [weak self] in self?.publishLoginItemStatus() })
         launchDashboard()
     }
 
@@ -821,11 +826,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         publishSettings(enabled: service.status == .enabled, status: resolvedStatus, message: message)
     }
 
+    private func checkUpdateActivity(_ completion: @escaping (Bool) -> Void) {
+        guard let origin = dashboardOrigin, !isTerminating else { completion(true); return }
+        struct Activity: Decodable { let busy: Bool }
+        let request = URLRequest(url: origin.appendingPathComponent("api/activity"), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 4)
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            let activity = (response as? HTTPURLResponse)?.statusCode == 200 ? data.flatMap { try? JSONDecoder().decode(Activity.self, from: $0) } : nil
+            DispatchQueue.main.async { completion(activity?.busy ?? true) }
+        }.resume()
+    }
+
     private func publishSettings(enabled: Bool, status: String, message: String) {
         guard let webView,
               let data = try? JSONSerialization.data(withJSONObject: ["enabled": enabled, "status": status, "message": message, "available": true, "herdrPanel": showHerdrPanel, "herdrPanelMode": panelMode.rawValue,
                   "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-                  "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""]),
+                  "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+                  "updateAvailable": updateController?.available ?? false,
+                  "canCheckForUpdates": updateController?.canCheckForUpdates ?? false,
+                  "automaticUpdateChecks": updateController?.automaticUpdateChecks ?? false,
+                  "updatesMessage": updateController?.message ?? "Updates are unavailable."]),
               let detail = String(data: data, encoding: .utf8) else { return }
         webView.evaluateJavaScript("window.dispatchEvent(new CustomEvent('native-settings',{detail:\(detail)}))")
     }
@@ -887,6 +906,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func showFailure(_ title: String, _ message: String) {
         guard !isTerminating else { return }
         isTerminating = true
+        updateController?.stop()
         startupTimer?.invalidate()
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
@@ -936,6 +956,13 @@ extension AppDelegate: WKScriptMessageHandler {
                   CFGetTypeID(enabled) == CFBooleanGetTypeID() else { return }
             setHerdrPanelVisible(enabled.boolValue)
             publishLoginItemStatus()
+        case "checkForUpdates":
+            guard Set(body.keys) == ["action"] else { return }
+            updateController?.checkForUpdates()
+        case "setAutomaticUpdateChecks":
+            guard Set(body.keys) == ["action", "enabled"], let enabled = body["enabled"] as? NSNumber,
+                  CFGetTypeID(enabled) == CFBooleanGetTypeID() else { return }
+            updateController?.setAutomaticUpdateChecks(enabled.boolValue)
         case "setLaunchAtLogin":
             guard Set(body.keys) == ["action", "enabled"], let enabled = body["enabled"] as? NSNumber,
                   CFGetTypeID(enabled) == CFBooleanGetTypeID() else { return }

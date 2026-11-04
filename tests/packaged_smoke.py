@@ -7,6 +7,9 @@ with tempfile.TemporaryDirectory(prefix='worktree-release-qa-',dir='/private/tmp
  root=Path(folder); app=root/'Another Folder/Worktree Monitor.app'
  shutil.copytree(Path(sys.argv[1]).resolve(),app,symlinks=True)
  with (app/'Contents/Info.plist').open('rb') as source:info=plistlib.load(source)
+ assert (app/'Contents/Frameworks/Sparkle.framework').exists()
+ assert info.get('SURequireSignedFeed') is True and info.get('SUVerifyUpdateBeforeExtraction') is True
+ assert info['SUFeedURL']=='https://github.com/mkjorl/worktree-monitor/releases/latest/download/appcast.xml'
  native=app/'Contents/MacOS'/info['CFBundleExecutable']
  build_versions=subprocess.check_output(['xcrun','vtool','-show-build',str(native)],text=True)
  minimums=re.findall(r'^\s*minos\s+(\S+)',build_versions,re.MULTILINE)
@@ -34,6 +37,7 @@ with tempfile.TemporaryDirectory(prefix='worktree-release-qa-',dir='/private/tmp
   with urlopen(origin+'/',timeout=5) as response: assert 'data-appearance="dark"' in response.read().decode()
   assert request('/api/herdr')['status']=='unavailable'
   assert request('/api/phone')['enabled'] is False
+  assert request('/api/activity')=={'busy':False}
   with urlopen(origin+'/deck',timeout=5) as response:
    deck=response.read().decode();assert 'Chat Deck' in deck and 'orientation:landscape' in deck
   for asset in ['/deck/icon-180.png','/deck/icon-512.png','/deck/manifest.webmanifest']:

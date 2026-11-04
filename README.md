@@ -102,3 +102,16 @@ For source development, `./run` uses the built backend when available. Otherwise
 The floating desktop chat panel uses the same compact count-and-filter header as the phone deck, with compact full-width chat rows.
 
 Star a chat on the desktop panel or phone to bookmark it. Pins are saved on this Mac and shared between both views. Pinned chats sort first within the current filter; use “Pinned chats” to include pinned working and idle chats. Bookmarks follow Herdr chat IDs; closing/recreating a chat can change its ID.
+
+## Updates from GitHub Releases
+
+The Mac app uses Sparkle to find signed releases on `mkjorl/worktree-monitor`.
+Settings → **App updates** offers **Check for Updates** and an optional automatic
+check toggle. Automatic checks start off; installation requires approval. Existing
+builds without the updater require one manual upgrade first.
+
+Release maintainers: increment the version/build in `native/build.sh`, commit and
+push, then run `./native/release.sh --publish-draft`. Review and publish the draft
+on GitHub to make the update available. Every release must include its signed
+app ZIP and signed `appcast.xml`. The matching private key stays in the release
+Mac's Keychain. See [packaging and key-backup instructions](native/PACKAGING.md).

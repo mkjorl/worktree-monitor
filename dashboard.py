@@ -544,6 +544,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.respond(200, snapshot())
             except Exception as exc:
                 self.respond(500, {"error": str(exc)[:500]})
+        elif path == "/api/activity":
+            with ACTIVE_LOCK:
+                busy = bool(ACTIVE_NAMES)
+            self.respond(200, {"busy": busy})
         elif path == "/api/herdr":
             self.respond(200, {**herdr_status.get_status(), "csrf": TOKEN})
         elif path == "/api/phone":

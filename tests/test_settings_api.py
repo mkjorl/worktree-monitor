@@ -11,6 +11,21 @@ import preferences
 
 
 class SettingsAPITests(unittest.TestCase):
+    def test_activity_reports_queued_operations_without_docker_or_workspace_reads(self):
+        server=dashboard.ThreadingHTTPServer(('127.0.0.1',0),dashboard.Handler)
+        worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
+        connection=HTTPConnection('127.0.0.1',server.server_port,timeout=5)
+        try:
+            with patch.object(dashboard,'snapshot',side_effect=AssertionError('Must not inspect workspaces')):
+                for active in [set(),{'docker'},{'managed:test'},{'project:/tmp/demo'}]:
+                    with patch.object(dashboard,'ACTIVE_NAMES',active):
+                        connection.request('GET','/api/activity');response=connection.getresponse()
+                        self.assertEqual(response.status,200);self.assertEqual(json.loads(response.read()),{'busy':bool(active)})
+                connection.request('GET','/api/activity',headers={'Host':'untrusted.local'})
+                response=connection.getresponse();response.read();self.assertEqual(response.status,403)
+        finally:
+            connection.close();server.shutdown();server.server_close();worker.join()
+
     def test_settings_require_local_csrf_and_persist_only_valid_arrays(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(preferences, 'SETTINGS_PATH', Path(folder) / 'settings.json'):
             server = dashboard.ThreadingHTTPServer(('127.0.0.1', 0), dashboard.Handler)

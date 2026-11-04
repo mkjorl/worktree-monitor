@@ -71,6 +71,34 @@ def run(args, **kwargs):
     return subprocess.run([str(arg) for arg in args], check=True, **kwargs)
 
 
+def signing_key(sparkle, config, private):
+    if private is not None:
+        private = private.strip()
+        try:
+            valid = len(base64.b64decode(private, validate=True)) in {32, 96}
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError("SPARKLE_PRIVATE_KEY must be an exported Sparkle key.")
+        return ["--ed-key-file", "-"], private
+    public = subprocess.check_output([sparkle / "bin/generate_keys", "--account", config["signing_account"], "-p"], text=True).strip()
+    if public != config["public_key"]:
+        raise ValueError("The release signing key in Keychain does not match this app's public key.")
+    return ["--account", config["signing_account"]], None
+
+
+def verify_archive_signature(public, signature, archive):
+    run(["swift", "-module-cache-path", "/private/tmp/worktree-monitor-module-cache", "-e", """
+import Foundation
+import CryptoKit
+let args = CommandLine.arguments
+let key = try Curve25519.Signing.PublicKey(rawRepresentation: Data(base64Encoded: args[1])!)
+let signature = Data(base64Encoded: args[2])!
+let data = try Data(contentsOf: URL(fileURLWithPath: args[3]), options: .mappedIfSafe)
+guard key.isValidSignature(signature, for: data) else { exit(1) }
+""", public, signature, archive])
+
+
 def validate_tag_target(output, tag, head):
     refs = dict((ref, sha) for sha, ref in (line.split() for line in output.splitlines() if line.strip()))
     ref = f"refs/tags/{tag}"
@@ -144,13 +172,10 @@ def main():
     args = parser.parse_args()
     config = json.loads((ROOT / "native/update-config.json").read_text())
     validate_config(config)
+    private = os.environ.pop("SPARKLE_PRIVATE_KEY", None)
     sparkle = Path(subprocess.check_output([ROOT / "native/fetch-sparkle.sh"], text=True).strip())
-    account = config["signing_account"]
-    public = subprocess.check_output([sparkle / "bin/generate_keys", "--account", account], text=True)
-    match = re.search(r"<string>([A-Za-z0-9+/]+=*)</string>", public)
-    public = match.group(1) if match else ""
-    if public != config["public_key"]:
-        raise ValueError("The release signing key in Keychain does not match this app's public key.")
+    key_args, private = signing_key(sparkle, config, private)
+    public = config["public_key"]
     app = ROOT / "dist/Worktree Monitor.app"
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     if info.get("SUPublicEDKey") != public or info.get("SUFeedURL") != config["feed_url"] or not info.get("SURequireSignedFeed"):
@@ -187,11 +212,12 @@ def main():
             run(["xcrun", "notarytool", "submit", archive, "--keychain-profile", profile, "--wait"])
             run(["xcrun", "stapler", "staple", copy]); run(["xcrun", "stapler", "validate", copy]); pack()
     sign_tool = sparkle / "bin/sign_update"
-    signature = subprocess.check_output([sign_tool, "--account", account, "-p", archive], text=True).strip()
-    run([sign_tool, "--account", account, "--verify", archive, signature])
+    signature = subprocess.check_output([sign_tool, *key_args, "-p", archive], input=private, text=True).strip()
+    run([sign_tool, *key_args, "--verify", archive, signature], input=private, text=True)
+    verify_archive_signature(public, signature, archive)
     feed.write_bytes(make_appcast(config, info, archive.name, archive.stat().st_size, signature))
-    run([sign_tool, "--account", account, feed])
-    run([sign_tool, "--account", account, "--verify", feed])
+    run([sign_tool, *key_args, feed], input=private, text=True)
+    run([sign_tool, *key_args, "--verify", feed], input=private, text=True)
     checksums = output / "SHA256SUMS"
     checksums.write_text("".join(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n" for path in [archive, feed]))
     notes = output / "RELEASE-NOTES.md"

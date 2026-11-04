@@ -66,22 +66,10 @@ jobs:
           node tests/test_phone_settings_ui.js
           .build/venv/bin/python -B tests/packaged_smoke.py 'dist/Worktree Monitor.app'
 
-      - name: Import signing key and package signed update
+      - name: Package signed update
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          .build/venv/bin/python - <<'PY'
-          import json, os, subprocess, sys, tempfile
-          from pathlib import Path
-          sparkle = Path(subprocess.check_output(['./native/fetch-sparkle.sh'], text=True).strip())
-          account = json.loads(Path('native/update-config.json').read_text())['signing_account']
-          with tempfile.TemporaryDirectory(prefix='sparkle-key-') as folder:
-              key = Path(folder) / 'private-key'
-              key.touch(mode=0o600)
-              key.write_text(os.environ.pop('SPARKLE_PRIVATE_KEY'))
-              subprocess.run([str(sparkle / 'bin/generate_keys'), '--account', account, '-f', str(key)], check=True)
-          subprocess.run([sys.executable, 'native/release.py'], check=True)
-          PY
+        run: .build/venv/bin/python native/release.py
 
       - name: Upload archive and publish signed feed last
         env:

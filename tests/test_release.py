@@ -1,7 +1,9 @@
 import base64
 import importlib.util
 from pathlib import Path
+import subprocess
 import unittest
+from unittest.mock import patch
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -63,6 +65,38 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(source_fingerprint(root),before)
             (root/'dashboard.py').write_text('changed')
             self.assertNotEqual(source_fingerprint(root),before)
+
+    def test_ci_signing_uses_stdin_and_rejects_invalid_secrets_without_printing_them(self):
+        for size in [32,96]:
+            private=base64.b64encode(bytes(size)).decode()
+            with patch.object(release.subprocess,'check_output') as command:
+                self.assertEqual(release.signing_key(Path('/sparkle'),self.config,'\n'+private+'\n'),(['--ed-key-file','-'],private))
+                command.assert_not_called()
+        for private in ['', 'invalid secret!', base64.b64encode(bytes(31)).decode()]:
+            with self.assertRaises(ValueError) as error:
+                release.signing_key(Path('/sparkle'),self.config,private)
+            if private:self.assertNotIn(private,str(error.exception))
+
+    def test_local_signing_checks_the_existing_key_without_generating_one(self):
+        with patch.object(release.subprocess,'check_output',return_value=self.config['public_key']+'\n') as command:
+            self.assertEqual(release.signing_key(Path('/sparkle'),self.config,None),(['--account',self.config['signing_account']],None))
+            self.assertEqual(command.call_args.args[0][-1],'-p')
+        with patch.object(release.subprocess,'check_output',return_value='other'):
+            with self.assertRaises(ValueError):release.signing_key(Path('/sparkle'),self.config,None)
+
+    @unittest.skipUnless(sys.platform=='darwin','CryptoKit verification requires macOS')
+    def test_public_key_verification_rejects_a_different_key_and_tampered_archive(self):
+        tool=Path(__file__).resolve().parents[1]/'.build/sparkle/2.10.1/bin/sign_update'
+        if not tool.exists():self.skipTest('Run native/build.sh to install Sparkle signing tools')
+        seed=base64.b64encode(bytes.fromhex('9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60')).decode()
+        public=base64.b64encode(bytes.fromhex('d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a')).decode()
+        with tempfile.TemporaryDirectory() as folder:
+            archive=Path(folder)/'update.zip';archive.write_bytes(b'test release')
+            signature=subprocess.check_output([str(tool),'--ed-key-file','-','-p',str(archive)],input=seed,text=True).strip()
+            release.verify_archive_signature(public,signature,archive)
+            with self.assertRaises(subprocess.CalledProcessError):release.verify_archive_signature(self.config['public_key'],signature,archive)
+            archive.write_bytes(b'tampered release')
+            with self.assertRaises(subprocess.CalledProcessError):release.verify_archive_signature(public,signature,archive)
 
     def test_invalid_archive_signature_metadata_or_update_source_is_rejected(self):
         for key,value in [('repository','attacker/repo'),('feed_url','http://github.com/mkjorl/worktree-monitor/releases/latest/download/appcast.xml'),('public_key','short'),('signing_account','owner; command')]:

@@ -43,10 +43,11 @@ Mac, authenticated to GitHub as a maintainer of `mkjorl/worktree-monitor`:
 ```
 
 Do not generate a replacement key: installed apps trust the public key already
-in `native/update-config.json`. The workflow imports the secret into the temporary
-GitHub runner's Keychain, removes the exported file, and uses the existing release
-script to verify the matching public key and both signatures. The private key is
-never passed as a command-line argument or included in release assets.
+in `native/update-config.json`. The workflow passes the secret to Sparkle through
+standard input, avoiding interactive Keychain requests on the GitHub runner.
+Packaging checks the archive signature against the configured public key with
+CryptoKit and verifies the signed feed. The private key is never passed as a
+command-line argument, written to a file on the runner, or included in release assets.
 
 For each release:
 

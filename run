@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+BACKEND="$ROOT/dist/Worktree Monitor.app/Contents/Resources/backend/worktree-backend"
+if [ -x "$BACKEND" ]; then exec "$BACKEND" "$@"; fi
+exec "${WORKTREE_PYTHON:-python3}" -B "$ROOT/dashboard.py" "$@"

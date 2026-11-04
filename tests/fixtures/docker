@@ -1,0 +1,36 @@
+#!/bin/sh
+# Simulate Docker only in an isolated test HOME; never contacts a daemon.
+set -eu
+test "$1" = --host
+test "$2" = "unix://$HOME/.docker/run/docker.sock" || test "$2" = unix:///var/run/docker.sock
+test "$DOCKER_HOST" = "$2"
+test -z "${DOCKER_CONTEXT:-}${DOCKER_TLS_VERIFY:-}${DOCKER_CERT_PATH:-}"
+shift 2
+desktop=running
+container=running
+if test -f "$HOME/desktop-state"; then desktop=$(cat "$HOME/desktop-state"); fi
+if test -f "$HOME/container-state"; then container=$(cat "$HOME/container-state"); fi
+id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+if test "$1" = desktop; then
+    case "$2" in
+        status) printf '{"Status":"%s"}\n' "$desktop" ;;
+        start|restart) echo running > "$HOME/desktop-state" ;;
+        stop) echo stopped > "$HOME/desktop-state" ;;
+        *) exit 2 ;;
+    esac
+    exit
+fi
+if test "$desktop" = stopped; then echo 'Cannot connect to local Docker' >&2; exit 1; fi
+case "$1" in
+    ps) printf '{"ID":"%s","Names":"fixture-postgres","Image":"postgres:16","State":"%s","Status":"Fixture status"}\n' "$id" "$container" ;;
+    stats) printf '{"Name":"fixture-postgres","CPUPerc":"0.5%%","MemUsage":"100 MiB / 8 GiB"}\n' ;;
+    container)
+        case "$2" in
+            inspect) test "$5" = "$id"; printf '{"id":"%s","name":"/fixture-postgres","state":"%s"}\n' "$id" "$container" ;;
+            pause) test "$3" = "$id"; echo paused > "$HOME/container-state" ;;
+            unpause|start) test "$3" = "$id"; echo running > "$HOME/container-state" ;;
+            stop|restart) test "$3" = --timeout; test "$4" = 10; test "$5" = "$id"; if test "$2" = stop; then echo exited; else echo running; fi > "$HOME/container-state" ;;
+            *) exit 2 ;;
+        esac ;;
+    *) exit 2 ;;
+esac

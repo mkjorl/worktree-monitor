@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Chat Deck">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f4f1eb">
+<link rel="apple-touch-icon" sizes="180x180" href="/deck/icon-180.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/deck/icon-512.png">
+<link rel="manifest" href="/deck/manifest.webmanifest">
+<meta name="referrer" content="no-referrer">
+<title>Chat Deck · Worktree Monitor</title>
+<style>
+:root{color-scheme:light;--paper:#f4f1eb;--ink:#193f36;--muted:#65736d;--line:#d8ddd6;--coral:#db705f;--mint:#c9e1d2;--surface:#fff;--subtle:#f8faf7;--hover:#f5f8f4;--dots:#c8cdc5;--divider:#e8ebe6;--badge:#e9eee8;--healthy:#d9ebdf;--partial:#f9e4bd;--stopped:#eee9e2;--stopped-ink:#706e68;--app-ink:#53645d;--app-line:#e1e5df;--error:#a54439;--danger-surface:#f9e4df;--danger-ink:#783c32;--danger-button:#a54439;--on-danger:#fff;--primary:#193f36;--on-primary:#fff;--on-coral:#fff;--switch:#c9cec8;--knob:#fff;--logo:#86b99a;--online:#6ba88b;--shadow:#193f3633;--backdrop:#193f3666;font:14px/1.45 Helvetica,Arial,sans-serif;color:var(--ink);background:var(--paper)}
+@media(prefers-color-scheme:dark){:root:not([data-appearance]),:root[data-appearance="system"]{color-scheme:dark;--paper:#141d1a;--ink:#dfebe4;--muted:#a2b4aa;--line:#3b4d43;--coral:#ed9582;--mint:#537963;--surface:#1e2a24;--subtle:#25332b;--hover:#304238;--dots:#2a3b31;--divider:#34473b;--badge:#304339;--healthy:#294c3a;--partial:#594824;--stopped:#343c36;--stopped-ink:#b7c0b8;--app-ink:#bdcdc2;--app-line:#3a4d40;--error:#ffab99;--danger-surface:#4a302c;--danger-ink:#ffc1b2;--danger-button:#aa483a;--on-danger:#fff;--primary:#a4cfb4;--on-primary:#142b1f;--on-coral:#321b15;--switch:#4b5c50;--knob:#edf5ef;--logo:#94c6a7;--online:#89c9a0;--shadow:#00000055;--backdrop:#00000099;}}
+:root[data-appearance="dark"]{color-scheme:dark;--paper:#141d1a;--ink:#dfebe4;--muted:#a2b4aa;--line:#3b4d43;--coral:#ed9582;--mint:#537963;--surface:#1e2a24;--subtle:#25332b;--hover:#304238;--dots:#2a3b31;--divider:#34473b;--badge:#304339;--healthy:#294c3a;--partial:#594824;--stopped:#343c36;--stopped-ink:#b7c0b8;--app-ink:#bdcdc2;--app-line:#3a4d40;--error:#ffab99;--danger-surface:#4a302c;--danger-ink:#ffc1b2;--danger-button:#aa483a;--on-danger:#fff;--primary:#a4cfb4;--on-primary:#142b1f;--on-coral:#321b15;--switch:#4b5c50;--knob:#edf5ef;--logo:#94c6a7;--online:#89c9a0;--shadow:#00000055;--backdrop:#00000099;}
+
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background-color:var(--paper);background-image:radial-gradient(var(--dots) .7px,transparent .7px);background-size:17px 17px;color:var(--ink);min-width:240px}main{max-width:1100px;margin:auto;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:nowrap;margin-bottom:6px}.filter{flex:none}.filter label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}select{min-height:48px;max-width:100%;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);padding:8px 30px 8px 12px;font:14px Helvetica,Arial,sans-serif}.summary{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--ink);margin:0;overflow-wrap:anywhere}.message{font-size:12px;margin:0 0 6px;overflow-wrap:anywhere}.message:empty{display:none}.message.error{color:var(--error)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.chat{display:grid;grid-template-columns:24px minmax(0,1fr);column-gap:10px;row-gap:3px;align-content:center;min-width:0;min-height:56px;padding:10px;text-align:left;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer;touch-action:manipulation}.chat:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 var(--line)}.chat:hover:not(:disabled){background:var(--subtle)}.chat:disabled{opacity:.6;cursor:wait}.status{display:flex;grid-column:1;grid-row:1 / span 2;align-self:center;align-items:center;min-height:24px}.status svg{width:24px;height:24px;flex:none}.status-label{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.workspace{grid-column:2;grid-row:1;min-width:0;font-size:12px;font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.agent{grid-column:2;grid-row:2;min-width:0;font:10px/1.3 ui-monospace,monospace;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.empty{padding:22px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:14px}.spinner{animation:spin 1.1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}button:focus-visible,select:focus-visible{outline:3px solid var(--coral);outline-offset:4px}footer{margin-top:10px;color:var(--muted);font-size:11px}@media(max-width:340px){.grid{grid-template-columns:1fr}}@media(orientation:landscape) and (min-width:560px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.chat{min-height:112px}main{padding-top:max(12px,env(safe-area-inset-top))}}@media(orientation:landscape) and (min-width:850px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(prefers-reduced-motion:reduce){.spinner{animation:none}.chat:active:not(:disabled){transform:none}}
+
+:root{--status-working:#95600b;--status-blocked:#b92d60;--status-done:#177c70;--status-idle:#397d3e;--status-unknown:#707799}
+@media(prefers-color-scheme:dark){:root:not([data-appearance]),:root[data-appearance="system"]{--status-working:#ffe1a3;--status-blocked:#fa88ab;--status-done:#8ddfd1;--status-idle:#9cde9d;--status-unknown:#a2a7ca}}
+:root[data-appearance="dark"]{--status-working:#ffe1a3;--status-blocked:#fa88ab;--status-done:#8ddfd1;--status-idle:#9cde9d;--status-unknown:#a2a7ca}
+.chat{--status-color:var(--status-unknown);border-top:3px solid var(--status-color)}.chat.working{--status-color:var(--status-working)}.chat.blocked{--status-color:var(--status-blocked);border-top-color:var(--status-color)}.chat.ready{--status-color:var(--status-done);border-top-color:var(--status-color)}.chat.idle{--status-color:var(--status-idle)}.status,.blocked .status{color:var(--muted)}.status svg{width:24px;height:24px;color:var(--status-color)}
+
+/* Compact phone landscape: two visible rows, with extra rows scrolling inside the grid. */
+@media(orientation:landscape) and (min-width:560px) and (max-height:600px){
+ main{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden;padding-top:max(6px,env(safe-area-inset-top));padding-bottom:max(6px,env(safe-area-inset-bottom))}
+ header{flex:none;flex-wrap:nowrap;margin-bottom:4px}footer{display:none}
+ select{min-height:44px;font-size:12px;padding:6px 25px 6px 9px}.summary{font-size:14px;margin:0}.message{flex:none;font-size:11px;margin-bottom:4px}.empty{overflow:auto}
+ .grid{flex:1;min-height:0;overflow-y:auto;align-content:start;grid-auto-rows:minmax(min-content,calc((100% - 8px)/2));padding-bottom:2px}.grid:empty{display:none}
+ .chat:focus-visible{outline-offset:-4px}
+}
+@media(orientation:landscape) and (min-width:740px) and (max-height:600px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.chat-tile{position:relative;min-width:0;width:100%;display:flex}.chat-tile .chat{flex:1;width:100%;height:100%;padding-right:54px}.pin{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:40px;height:40px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:26px/1 Helvetica,Arial,sans-serif;cursor:pointer}.pin[aria-pressed="true"]{color:var(--ink)}.pin:hover{background:var(--badge)}.pin:disabled{opacity:.6;cursor:wait}
+@media(orientation:portrait){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<header><p id="summary" class="summary" role="status">Connecting…</p><div class="filter"><label for="mode">Show chats</label><select id="mode"><option value="attention">Needs attention</option><option value="unread">Unread replies</option><option value="ready">Ready for reply</option><option value="input">Needs input</option><option value="all">All chats</option><option value="pinned">Pinned chats</option></select></div></header>
+<p id="message" class="message" role="status" aria-live="polite"></p>
+<div id="empty" class="empty">Loading chats…</div>
+<div id="grid" class="grid" aria-label="Chats on your Mac"></div>
+<footer>Keep your phone and Mac on the same trusted Wi-Fi. Updates every 5 seconds.</footer>
+</main>
+<script>
+'use strict';
+const grid=document.querySelector('#grid'),modeSelect=document.querySelector('#mode');
+const modes=['attention','unread','ready','input','all','pinned'];
+const labels={blocked:'Needs input',ready:'Ready for reply',working:'Working',idle:'Idle',unknown:'Unknown'};
+const paths={blocked:'<circle cx="12" cy="12" r="9"/><path d="m8.5 8.5 7 7m0-7-7 7"/>',ready:'<circle cx="12" cy="12" r="9"/><path d="m7.5 12 3 3 6-6"/>',working:'<path d="M12 21a9 9 0 1 0-9-9"/>',idle:'<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/>',unknown:'<circle cx="12" cy="12" r="3.4" fill="currentColor" stroke="none"/>'};
+let revision=0;
+let chats=[],csrf='',available=false,refreshing=false,focusing=false,authRequired=false,pollTimer=null,mode='attention';
+try{const saved=localStorage.getItem('deck-mode');if(modes.includes(saved))mode=saved}catch{}
+modeSelect.value=mode;
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function stateOf(chat){return Object.hasOwn(labels,chat.state)?chat.state:'unknown'}
+function visibleChats(){const order=['blocked','ready','working','idle','unknown'];return chats.filter(c=>mode==='all'||(mode==='pinned'&&c.pinned===true)||(mode==='attention'&&['blocked','ready'].includes(c.state))||(mode==='unread'&&c.unread===true)||(mode==='ready'&&c.state==='ready')||(mode==='input'&&c.state==='blocked')).sort((a,b)=>Number(b.pinned===true)-Number(a.pinned===true)||(['all','pinned'].includes(mode)?order.indexOf(stateOf(a))-order.indexOf(stateOf(b)):Number(b.state==='blocked')-Number(a.state==='blocked')))}
+function chatButton(chat){const state=stateOf(chat);return `<div class="chat-tile"><button type="button" class="chat ${state}" data-chat-id="${esc(chat.id)}" ${focusing?'disabled':''} aria-label="${esc(`Select ${chat.name||'Chat'} in ${chat.workspace||'Workspace'} on your Mac. ${labels[state]}${chat.unread?' · Unread':''}`)}"><span class="status"><svg class="${state==='working'?'spinner':''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[state]}</svg><span class="status-label">${labels[state]}</span></span><span class="workspace">${esc(chat.workspace||'Workspace')} · ${esc(chat.name||'Chat')}</span><span class="agent">${esc(chat.agent||'Agent')} · ${labels[state]}${chat.unread?' · Unread':''}</span></button><button type="button" class="pin" data-pin-id="${esc(chat.id)}" aria-pressed="${chat.pinned===true}" aria-label="${esc(`${chat.pinned===true?'Unpin':'Pin'} ${chat.name||'chat'} in ${chat.workspace||'Workspace'}`)}" ${focusing?'disabled':''}>${chat.pinned===true?'★':'☆'}</button></div>`}
+function message(text,error=false){const el=document.querySelector('#message');el.textContent=text;el.classList.toggle('error',error)}
+function restoreChatFocus(id){const button=[...grid.querySelectorAll('[data-chat-id]')].find(b=>b.dataset.chatId===id&&!b.disabled);(button||modeSelect).focus()}
+function render(){const focused=document.activeElement?.dataset?.chatId,pinFocused=document.activeElement?.dataset?.pinId,list=available?visibleChats():[];grid.innerHTML=list.map(chatButton).join('');grid.setAttribute('aria-busy',String(focusing));document.querySelector('#empty').hidden=available&&list.length>0;if(available){document.querySelector('#summary').textContent=`${list.length} ${list.length===1?'chat':'chats'}`;document.querySelector('#empty').textContent=chats.length?'No chats match this view.':'No chats detected in Herdr.'}if(focused&&!focusing)restoreChatFocus(focused);if(pinFocused&&!focusing)restorePinFocus(pinFocused)}
+function unavailable(text,pairing=false){available=false;chats=[];if(pairing){authRequired=true;csrf='';if(pollTimer!==null)clearInterval(pollTimer);pollTimer=null}document.querySelector('#summary').textContent=pairing?'Pair your phone':'Connection unavailable';document.querySelector('#empty').textContent=text;render()}
+function pairing(){unavailable('Open Phone access in Worktree Monitor on your Mac and use its pairing link.',true)}
+async function request(url,options={}){const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);try{const r=await fetch(url,{cache:'no-store',credentials:'same-origin',redirect:'error',...options,signal:controller.signal});if(r.status===401)return {ok:false,status:401,data:{}};return {ok:r.ok,status:r.status,data:await r.json()}}finally{clearTimeout(timeout)}}
+async function refresh(){
+  if(refreshing||focusing||authRequired)return;refreshing=true;const version=revision;
+  try{const r=await request('/deck/api/status');if(r.status===401){pairing();return}if(authRequired||version!==revision)return;if(!r.ok)throw Error('Status unavailable');const d=r.data;csrf=d.csrf||csrf;document.documentElement.dataset.appearance=['system','light','dark'].includes(d.appearance)?d.appearance:'system';if(d.status!=='available'){unavailable(d.message||'Herdr is unavailable. Open it on your Mac.');return}const rows=d.all_chats??d.chats;if(!Array.isArray(rows))throw Error('Invalid chat status');chats=rows.filter(c=>c&&typeof c.id==='string');available=true;render()}
+  catch{if(!authRequired&&version===revision)unavailable('Could not refresh chats. Waiting to reconnect to your Mac…')}finally{refreshing=false}
+}
+async function focusChat(id){
+  if(focusing||authRequired||!available||!chats.some(c=>c.id===id))return;
+  focusing=true;message('Selecting chat on your Mac…');render();
+  try{const r=await request('/deck/api/focus',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({id})});if(r.status===401){pairing();message('Pairing expired. Use a new pairing link from your Mac.',true);return}if(authRequired)return;if(!r.ok){message(r.data.error||'Could not select this chat. Check Herdr on your Mac.',true);return}message(r.data.message||'Chat selected on your Mac.')}
+  catch{if(!authRequired)message('Could not confirm selection. Check your Mac before trying again.',true)}finally{focusing=false;render();if(available&&!authRequired)restoreChatFocus(id)}
+}
+function restorePinFocus(id){const button=[...grid.querySelectorAll('[data-pin-id]')].find(b=>b.dataset.pinId===id&&!b.disabled);(button||modeSelect).focus()}
+async function pinChat(id){
+  if(focusing||authRequired||!available)return;
+  const chat=chats.find(c=>c.id===id);if(!chat)return;
+  const pinned=chat.pinned!==true;
+  revision++;focusing=true;message(pinned?'Pinning chat…':'Unpinning chat…');render();
+  try{const r=await request('/deck/api/pin',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({id,pinned})});if(r.status===401){pairing();message('Pairing expired. Use a new pairing link from your Mac.',true);return}if(!r.ok){message(r.data.error||'Could not save bookmark.',true);return}chat.pinned=pinned;message(pinned?'Chat pinned.':'Chat unpinned.')}
+  catch{message('Could not confirm bookmark. Refresh before trying again.',true)}finally{focusing=false;render();if(available&&!authRequired)restorePinFocus(id)}
+}
+function takePairToken(){const hash=location.hash;if(hash)history.replaceState(null,'',location.pathname+location.search);return new URLSearchParams(hash.slice(1)).get('pair')}
+async function boot(){
+  let token=takePairToken();
+  if(token){message('Pairing with your Mac…');try{const r=await request('/deck/api/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});if(!r.ok){pairing();message('Pairing link expired or could not be used. Get a new link from your Mac.',true);return}csrf=r.data.csrf||'';message('Phone paired.')}catch{pairing();message('Could not pair with your Mac. Open a new pairing link to try again.',true);return}finally{token=null}}
+  await refresh();if(!authRequired)pollTimer=setInterval(refresh,5000);
+}
+modeSelect.addEventListener('change',()=>{mode=modes.includes(modeSelect.value)?modeSelect.value:'attention';try{localStorage.setItem('deck-mode',mode)}catch{}render()});
+grid.addEventListener('click',e=>{const pin=e.target.closest('[data-pin-id]');if(pin){if(!pin.disabled)pinChat(pin.dataset.pinId);return}const button=e.target.closest('[data-chat-id]');if(button&&!button.disabled)focusChat(button.dataset.chatId)});
+window.addEventListener('pagehide',()=>{available=false;chats=[];render()});
+window.addEventListener('pageshow',e=>{if(e.persisted)refresh()});
+boot();
+</script></body></html>

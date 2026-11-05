@@ -721,8 +721,8 @@ class Handler(BaseHTTPRequestHandler):
         self.respond(202, {"job": job_id})
 
     def queue_bulk_destroy(self, names):
-        if not isinstance(names, list) or len(names) < 2:
-            raise ValueError("Select at least two workspaces")
+        if not isinstance(names, list) or not names:
+            raise ValueError("Select at least one workspace")
         if any(not isinstance(name, str) for name in names) or len(set(names)) != len(names):
             raise ValueError("Choose each workspace once")
         states = visible_states()

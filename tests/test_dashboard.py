@@ -224,21 +224,32 @@ class DashboardTests(unittest.TestCase):
                  patch.object(dashboard, "ACTIVE_NAMES", set()) as active_names, \
                  patch.object(dashboard, "JOBS", {}), \
                  patch.object(dashboard.POOL, "submit", side_effect=submitted.append) as submit:
+                connection.request("POST", "/api/bulk-destroy", json.dumps({"names": ["one"], "confirmed": True}), headers)
+                response = connection.getresponse()
+                result = json.loads(response.read())
+                self.assertEqual(response.status, 202)
+                self.assertEqual([item["name"] for item in result["jobs"]], ["one"])
+                self.assertEqual(validate_target.call_count, 1)
+                ensure_docker.assert_called_once()
+                submit.assert_called_once()
+                self.assertEqual(active_names, {"managed:one"})
+                active_names.clear()
+
                 connection.request("POST", "/api/bulk-destroy", json.dumps({"names": ["one", "two"], "confirmed": True}), headers)
                 response = connection.getresponse()
                 result = json.loads(response.read())
                 self.assertEqual(response.status, 202)
                 self.assertEqual([item["name"] for item in result["jobs"]], ["one", "two"])
                 self.assertEqual(len({item["job"] for item in result["jobs"]}), 2)
-                self.assertEqual(validate_target.call_count, 2)
-                ensure_docker.assert_called_once()
-                self.assertEqual(submit.call_count, 2)
+                self.assertEqual(validate_target.call_count, 3)
+                self.assertEqual(ensure_docker.call_count, 2)
+                self.assertEqual(submit.call_count, 3)
                 self.assertEqual(active_names, {"managed:one", "managed:two"})
 
                 connection.request("POST", "/api/bulk-destroy", json.dumps({"names": ["one", "missing"], "confirmed": True}), headers)
                 response = connection.getresponse()
                 self.assertEqual(response.status, 400)
-                self.assertEqual(submit.call_count, 2)
+                self.assertEqual(submit.call_count, 3)
         finally:
             connection.close()
             server.shutdown()
@@ -266,7 +277,7 @@ class DashboardTests(unittest.TestCase):
                  patch.object(dashboard, "ACTIVE_NAMES", set()), \
                  patch.object(dashboard.POOL, "submit") as submit:
                 for body in ({"names": ["one", "two"]},
-                             {"names": ["one"], "confirmed": True},
+                             {"names": [], "confirmed": True},
                              {"names": ["one", "one"], "confirmed": True},
                              {"names": ["one", "two"], "confirmed": "true"}):
                     connection.request("POST", "/api/bulk-destroy", json.dumps(body), headers)

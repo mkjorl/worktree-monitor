@@ -3,6 +3,12 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const html = fs.readFileSync(new URL('../index.html', `file://${__filename}`), 'utf8');
+const deleteDialog = html.match(/<dialog id="delete-dialog"[\s\S]*?<\/dialog>/)?.[0];
+assert.ok(deleteDialog, 'workspace deletion needs a confirmation dialog');
+assert.match(deleteDialog, /No, keep workspace/);
+assert.match(deleteDialog, /Yes, delete workspace/);
+assert.doesNotMatch(deleteDialog, /delete-name|Type the workspace name/);
+assert.match(html, /JSON\.stringify\(\{action:'destroy',name,confirmed:true\}\)/);
 // The desktop panel toggle is enabled only by the native app's settings response.
 {
   const callbacks = {}, messages = [], toggle = { disabled: true, checked: false, addEventListener(type, callback) { callbacks[type] = callback; } };

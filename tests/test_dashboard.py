@@ -134,7 +134,7 @@ class DashboardTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Docker"):
                 dashboard.ensure_docker_available()
 
-    def test_destroy_requires_registered_safe_name_and_exact_confirmation(self):
+    def test_destroy_requires_registered_safe_name(self):
         with self.assertRaises(ValueError):
             dashboard.validate_action("destroy", "../demo", [{"name": "../demo"}])
         with self.assertRaises(ValueError):
@@ -173,7 +173,7 @@ class DashboardTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "non-local native PostgreSQL"):
                     dashboard.validate_destroy_target(state)
 
-    def test_destroy_http_action_rejects_missing_confirmation(self):
+    def test_destroy_http_action_requires_explicit_confirmation(self):
         server = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
@@ -182,12 +182,25 @@ class DashboardTests(unittest.TestCase):
         state = {"name": "demo", "status": "stopped", "project_root": "/tmp/workspaces/demo"}
         try:
             with patch.object(dashboard.lifecycle, "load_all_states", return_value=[state]), \
+                 patch.object(workspace_operations, "operation_for", return_value={"busy": False}), \
+                 patch.object(dashboard, "validate_destroy_target", return_value=state), \
+                 patch.object(dashboard, "ensure_docker_available"), \
+                 patch.object(dashboard, "ACTIVE_NAMES", set()), \
                  patch.object(dashboard.POOL, "submit") as submit:
-                connection.request("POST", "/api/action", json.dumps({"action": "destroy", "name": "demo"}), headers)
-                response = connection.getresponse()
-                self.assertEqual(response.status, 400)
-                self.assertIn("confirm deletion", json.loads(response.read())["error"])
+                for body in ({"action": "destroy", "name": "demo"},
+                             {"action": "destroy", "name": "demo", "confirmed": False},
+                             {"action": "destroy", "name": "demo", "confirmed": "true"}):
+                    connection.request("POST", "/api/action", json.dumps(body), headers)
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 400)
+                    self.assertIn("Confirm deletion", json.loads(response.read())["error"])
                 submit.assert_not_called()
+
+                connection.request("POST", "/api/action", json.dumps({"action": "destroy", "name": "demo", "confirmed": True}), headers)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 202)
+                self.assertIn("job", json.loads(response.read()))
+                submit.assert_called_once()
         finally:
             connection.close()
             server.shutdown()

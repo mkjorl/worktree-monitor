@@ -655,8 +655,8 @@ class Handler(BaseHTTPRequestHandler):
             if operation["busy"]:
                 return self.respond(409, {"error": operation["stage"] or "Workspace operation is already in progress"})
             if action == "destroy":
-                if body.get("confirmation") != name:
-                    raise ValueError("Type the workspace name to confirm deletion")
+                if body.get("confirmed") is not True:
+                    raise ValueError("Confirm deletion to continue")
                 validate_destroy_target(state)
                 ensure_docker_available()
             if action in {"start", "reset"}:

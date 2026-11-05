@@ -9,6 +9,13 @@ assert.match(deleteDialog, /No, keep workspace/);
 assert.match(deleteDialog, /Yes, delete workspace/);
 assert.doesNotMatch(deleteDialog, /delete-name|Type the workspace name/);
 assert.match(html, /JSON\.stringify\(\{action:'destroy',name,confirmed:true\}\)/);
+assert.match(html, /id="bulk-start"[^>]*>Bulk delete/);
+assert.match(html, /id="bulk-select-all"[^>]*>Select all available/);
+assert.match(html, /document\.querySelector\('#bulk-open'\)\.disabled=count<1/);
+assert.match(html, /id="bulk-delete-dialog"[\s\S]*?No, keep workspaces[\s\S]*?Yes, delete workspaces/);
+assert.match(html, /document.querySelector\('#bulk-delete-cancel'\)\.focus\(\)/);
+assert.match(html, /fetch\('\/api\/bulk-destroy'/);
+assert.match(html, /JSON\.stringify\(\{names,confirmed:true\}\)/);
 // The desktop panel toggle is enabled only by the native app's settings response.
 {
   const callbacks = {}, messages = [], toggle = { disabled: true, checked: false, addEventListener(type, callback) { callbacks[type] = callback; } };
@@ -134,6 +141,7 @@ const projectContext = {
   esc: value => String(value ?? '—').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])),
   num: value => Number(value) || 0,
   pending: new Map([['/Projects/one/demo','start']]),
+  selectionMode: false, selectedForDelete: new Set(),
   icon: name => `<svg>${name}</svg>`,
 };
 vm.runInNewContext(projectHelpers.join('\n'), projectContext);
@@ -148,6 +156,77 @@ assert.equal(projectContext.projectKey({ ...generic, id: '/Projects/two/demo' })
 assert.deepEqual(JSON.parse(JSON.stringify(projectContext.actionPayload(generic, 'start'))), { action: 'start', project: '/Projects/one/demo' });
 assert.deepEqual(JSON.parse(JSON.stringify(projectContext.actionPayload({ name: 'managed-demo', managed: true }, 'stop'))), { action: 'stop', name: 'managed-demo' });
 assert.equal(projectContext.metricValue(0, 1, '%'), '0.0%');
+const managed = { id: 'managed:one', name: 'one', managed: true, status: 'stopped', can_start: true, can_destroy: true, can_reset: true, services: {} };
+projectContext.selectionMode = true;
+const selectableMarkup = projectContext.workspaceCard(managed);
+assert.match(selectableMarkup, /data-bulk-select="managed:one"/);
+assert.doesNotMatch(selectableMarkup, /data-delete=|data-action=/);
+projectContext.selectedForDelete.add(managed.id);
+assert.match(projectContext.workspaceCard(managed), /data-bulk-select="managed:one" checked/);
+projectContext.pending.set(managed.id, 'destroy');
+assert.doesNotMatch(projectContext.workspaceCard(managed), /data-bulk-select=/);
+projectContext.pending.delete(managed.id);
+projectContext.selectionMode = false;
+
+const bulkHandlerSource = html.slice(html.indexOf('const bulkDeleteDialog='), html.indexOf('const deleteDialog='));
+assert.ok(bulkHandlerSource.includes("fetch('/api/bulk-destroy'"));
+(async () => {
+  const callbacks = {}, elements = {}, requests = [], watched = [];
+  for (const selector of ['#bulk-start', '#bulk-select-all', '#bulk-cancel', '#bulk-open', '#bulk-count', '#bulk-toolbar', '#cards', '#bulk-delete-dialog', '#bulk-delete-list', '#bulk-delete-title', '#bulk-delete-question', '#bulk-delete-cancel', '#bulk-delete-confirm', '#bulk-delete-form']) {
+    elements[selector] = { hidden: false, textContent: '', innerHTML: '', disabled: false, isConnected: true, focused: false,
+      listeners: {}, addEventListener(type, callback) { this.listeners[type] = callback; }, focus() { this.focused = true; },
+      showModal() { this.open = true; }, close() { this.open = false; this.listeners.close?.(); } };
+  }
+  const eligible = ['one', 'two'].map(name => ({ id: `managed:${name}`, name, managed: true, can_destroy: true }));
+  const state = {
+    latest: [...eligible, { id: 'managed:busy', name: 'busy', managed: true, can_destroy: true, operation: { busy: true } }, generic],
+    selectedForDelete: new Set(), selectionMode: false, pending: new Map(), csrf: 'bulk-token',
+    projectKey: workspace => workspace.id || workspace.name,
+    workspaceBusy: workspace => state.pending.has(workspace.id || workspace.name) || Boolean(workspace.operation?.busy),
+    esc: projectContext.esc,
+    document: { querySelector(selector) { return elements[selector]; } },
+    window: { jobNames: new Map() },
+    render() {}, showMessage(text, error = false) { state.message = text; state.messageError = error; },
+    async fetch(url, options) {
+      requests.push({ url, options });
+      const names = JSON.parse(options.body).names;
+      return { ok: true, json: async () => ({ jobs: names.map(name => ({ name, job: `job-${name}-${requests.length}` })) }) };
+    },
+    async watchJob(job, report) { watched.push(job); report('done', false); state.pending.delete(state.window.jobNames.get(job)); },
+  };
+  vm.runInNewContext(bulkHandlerSource, state);
+  elements['#bulk-start'].listeners.click();
+  assert.equal(state.selectionMode, true);
+  elements['#bulk-select-all'].listeners.click();
+  assert.deepEqual([...state.selectedForDelete], ['managed:one', 'managed:two']);
+  elements['#bulk-open'].listeners.click();
+  assert.equal(elements['#bulk-delete-dialog'].open, true);
+  assert.equal(elements['#bulk-delete-title'].textContent, 'Delete 2 workspaces?');
+  assert.match(elements['#bulk-delete-list'].innerHTML, /<li>one<\/li><li>two<\/li>/);
+  await elements['#bulk-delete-form'].listeners.submit({ preventDefault() {} });
+  assert.equal(requests[0].url, '/api/bulk-destroy');
+  assert.equal(requests[0].options.headers['X-CSRF-Token'], 'bulk-token');
+  assert.deepEqual(JSON.parse(requests[0].options.body), { names: ['one', 'two'], confirmed: true });
+  assert.deepEqual(watched, ['job-one-1', 'job-two-1']);
+  assert.equal(state.pending.size, 0);
+  assert.equal(state.selectionMode, false);
+  assert.equal(state.selectedForDelete.size, 0);
+  assert.equal(state.message, 'Finished deleting 2 workspaces.');
+
+  state.selectionMode = true;
+  state.selectedForDelete.add('managed:one');
+  elements['#bulk-open'].listeners.click();
+  assert.equal(elements['#bulk-delete-dialog'].open, true);
+  assert.equal(elements['#bulk-delete-title'].textContent, 'Delete 1 workspace?');
+  assert.equal(elements['#bulk-delete-question'].textContent, 'Review this workspace before you delete it.');
+  assert.equal(elements['#bulk-delete-cancel'].textContent, 'No, keep workspace');
+  assert.equal(elements['#bulk-delete-confirm'].textContent, 'Yes, delete workspace');
+  await elements['#bulk-delete-form'].listeners.submit({ preventDefault() {} });
+  assert.deepEqual(JSON.parse(requests[1].options.body), { names: ['one'], confirmed: true });
+  assert.deepEqual(watched, ['job-one-1', 'job-two-1', 'job-one-2']);
+  assert.equal(state.pending.size, 0);
+  assert.equal(state.message, 'Finished deleting 1 workspace.');
+})().catch(error => { console.error(error); process.exitCode = 1; });
 
 const saveProjectSource = html.match(/async function saveProject\(e\)\{[\s\S]*?\n\}/)?.[0];
 assert.ok(saveProjectSource);

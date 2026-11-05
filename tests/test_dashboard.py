@@ -207,6 +207,91 @@ class DashboardTests(unittest.TestCase):
             server.server_close()
             worker.join()
 
+    def test_bulk_destroy_validates_all_targets_before_queueing_jobs(self):
+        server = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        headers = {"Origin": f"http://127.0.0.1:{server.server_port}", "X-CSRF-Token": dashboard.TOKEN}
+        states = [{"name": name, "status": "stopped", "project_root": f"/tmp/workspaces/{name}"}
+                  for name in ("one", "two")]
+        submitted = []
+        try:
+            with patch.object(dashboard.lifecycle, "load_all_states", return_value=states), \
+                 patch.object(workspace_operations, "operation_for", return_value={"busy": False}), \
+                 patch.object(dashboard, "validate_destroy_target", side_effect=lambda state: state) as validate_target, \
+                 patch.object(dashboard, "ensure_docker_available") as ensure_docker, \
+                 patch.object(dashboard, "ACTIVE_NAMES", set()) as active_names, \
+                 patch.object(dashboard, "JOBS", {}), \
+                 patch.object(dashboard.POOL, "submit", side_effect=submitted.append) as submit:
+                connection.request("POST", "/api/bulk-destroy", json.dumps({"names": ["one", "two"], "confirmed": True}), headers)
+                response = connection.getresponse()
+                result = json.loads(response.read())
+                self.assertEqual(response.status, 202)
+                self.assertEqual([item["name"] for item in result["jobs"]], ["one", "two"])
+                self.assertEqual(len({item["job"] for item in result["jobs"]}), 2)
+                self.assertEqual(validate_target.call_count, 2)
+                ensure_docker.assert_called_once()
+                self.assertEqual(submit.call_count, 2)
+                self.assertEqual(active_names, {"managed:one", "managed:two"})
+
+                connection.request("POST", "/api/bulk-destroy", json.dumps({"names": ["one", "missing"], "confirmed": True}), headers)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 400)
+                self.assertEqual(submit.call_count, 2)
+        finally:
+            connection.close()
+            server.shutdown()
+            server.server_close()
+            worker.join()
+
+    def test_bulk_destroy_rejects_busy_duplicate_and_unsafe_selections(self):
+        server = dashboard.ThreadingHTTPServer(("127.0.0.1", 0), dashboard.Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        headers = {"Origin": f"http://127.0.0.1:{server.server_port}", "X-CSRF-Token": dashboard.TOKEN}
+        states = [{"name": name, "status": "stopped", "project_root": f"/tmp/workspaces/{name}"}
+                  for name in ("one", "two")]
+        def validate_target(state):
+            if state["name"] == "two":
+                raise ValueError("Unsafe target")
+            return state
+
+        try:
+            with patch.object(dashboard.lifecycle, "load_all_states", return_value=states), \
+                 patch.object(workspace_operations, "operation_for", return_value={"busy": False}), \
+                 patch.object(dashboard, "validate_destroy_target", side_effect=validate_target), \
+                 patch.object(dashboard, "ensure_docker_available") as ensure_docker, \
+                 patch.object(dashboard, "ACTIVE_NAMES", set()), \
+                 patch.object(dashboard.POOL, "submit") as submit:
+                for body in ({"names": ["one", "two"]},
+                             {"names": ["one"], "confirmed": True},
+                             {"names": ["one", "one"], "confirmed": True},
+                             {"names": ["one", "two"], "confirmed": "true"}):
+                    connection.request("POST", "/api/bulk-destroy", json.dumps(body), headers)
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 400)
+                connection.request("POST", "/api/bulk-destroy", json.dumps({"names": ["one", "two"], "confirmed": True}), headers)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 400)
+                self.assertIn("Unsafe target", json.loads(response.read())["error"])
+                submit.assert_not_called()
+                ensure_docker.assert_not_called()
+
+            with patch.object(dashboard.lifecycle, "load_all_states", return_value=states), \
+                 patch.object(workspace_operations, "operation_for", return_value={"busy": True, "stage": "Busy"}), \
+                 patch.object(dashboard.POOL, "submit") as submit:
+                connection.request("POST", "/api/bulk-destroy", json.dumps({"names": ["one", "two"], "confirmed": True}), headers)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 409)
+                submit.assert_not_called()
+        finally:
+            connection.close()
+            server.shutdown()
+            server.server_close()
+            worker.join()
+
     def test_destroy_rejects_shared_or_mismatched_resources(self):
         context = SimpleNamespace(workspace=dashboard.Path("/tmp/workspaces"), backend=dashboard.Path("/tmp/web-app"))
         safe = {"name": "demo", "project_root": "/tmp/workspaces/demo", "postgres_mode": "docker",

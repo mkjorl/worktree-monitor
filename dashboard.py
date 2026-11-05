@@ -595,7 +595,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(404, {"error": "Not found"})
 
     def do_POST(self):
-        if self.path not in {"/api/action", "/api/settings", "/api/project", "/api/docker/action", "/api/herdr/focus", "/api/herdr/pin", "/api/phone", "/deck/api/focus", "/deck/api/pin"}:
+        if self.path not in {"/api/action", "/api/bulk-destroy", "/api/settings", "/api/project", "/api/docker/action", "/api/herdr/focus", "/api/herdr/pin", "/api/phone", "/deck/api/focus", "/deck/api/pin"}:
             return self.respond(404, {"error": "Not found"})
         try:
             validate_local_headers(self.headers, self.server.server_port, post=True)
@@ -641,6 +641,10 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("Provide a project path, URL, and command")
                 project = require_project(body["path"])
                 return self.respond(200, {"path": project["path"], **save_project(project["path"], body["url"], body["command"]), "csrf": TOKEN})
+            if self.path == "/api/bulk-destroy":
+                if set(body) != {"names", "confirmed"} or body["confirmed"] is not True:
+                    raise ValueError("Confirm deletion to continue")
+                return self.queue_bulk_destroy(body["names"])
             action, name = body.get("action"), body.get("name")
             project_path = None
             if "project" in body:
@@ -715,6 +719,53 @@ class Handler(BaseHTTPRequestHandler):
                     ACTIVE_NAMES.discard(key)
         POOL.submit(run_action)
         self.respond(202, {"job": job_id})
+
+    def queue_bulk_destroy(self, names):
+        if not isinstance(names, list) or len(names) < 2:
+            raise ValueError("Select at least two workspaces")
+        if any(not isinstance(name, str) for name in names) or len(set(names)) != len(names):
+            raise ValueError("Choose each workspace once")
+        states = visible_states()
+        targets = [validate_action("destroy", name, states) for name in names]
+        module = lifecycle.get_lifecycle()
+        checkout = lifecycle.configured_checkout()
+        for state in targets:
+            operation = workspace_operations.operation_for(module, checkout, state["name"])
+            if operation["busy"]:
+                return self.respond(409, {"error": operation["stage"] or "Workspace operation is already in progress"})
+            validate_destroy_target(state)
+        ensure_docker_available()
+
+        jobs = [{"name": state["name"], "job": uuid.uuid4().hex,
+                 "key": "managed:" + state["name"]} for state in targets]
+        with ACTIVE_LOCK:
+            if "docker" in ACTIVE_NAMES:
+                return self.respond(409, {"error": "Wait for the Docker operation to finish"})
+            if any(job["key"] in ACTIVE_NAMES for job in jobs):
+                return self.respond(409, {"error": "A workspace operation is already running"})
+            ACTIVE_NAMES.update(job["key"] for job in jobs)
+        with JOBS_LOCK:
+            for job in jobs:
+                JOBS[job["job"]] = {"state": "running", "message": "Workspace deletion queued."}
+
+        for index, job in enumerate(jobs):
+            def run_action(job_id=job["job"], name=job["name"], key=job["key"]):
+                try:
+                    perform_action(job_id, "destroy", name)
+                finally:
+                    with ACTIVE_LOCK:
+                        ACTIVE_NAMES.discard(key)
+            try:
+                POOL.submit(run_action)
+            except RuntimeError:
+                with JOBS_LOCK:
+                    for queued in jobs[index:]:
+                        JOBS[queued["job"]] = {"state": "error", "message": "Could not queue this workspace deletion. Try again."}
+                with ACTIVE_LOCK:
+                    for queued in jobs[index:]:
+                        ACTIVE_NAMES.discard(queued["key"])
+                break
+        return self.respond(202, {"jobs": [{"name": job["name"], "job": job["job"]} for job in jobs]})
 
     def log_message(self, fmt, *args):
         print("[dashboard] " + fmt % args, flush=True)
